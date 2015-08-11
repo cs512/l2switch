@@ -153,6 +153,8 @@ public class FlowWriterServiceImpl implements FlowWriterService {
     Preconditions.checkNotNull(sourceNodeConnectorRef, "Source port should not be null.");
     Preconditions.checkNotNull(destMac, "Destination mac address should not be null.");
     Preconditions.checkNotNull(destNodeConnectorRef, "Destination port should not be null.");
+    
+    _logger.info("addBidirectionalMacToMacFlows: Called");
 
     if(sourceNodeConnectorRef.equals(destNodeConnectorRef)) {
       _logger.info("In addMacToMacFlowsUsingShortestPath: No flows added. Source and Destination ports are same.");

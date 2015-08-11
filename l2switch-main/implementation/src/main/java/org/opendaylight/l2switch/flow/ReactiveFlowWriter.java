@@ -17,6 +17,8 @@ import org.opendaylight.yang.gen.v1.urn.opendaylight.packet.arp.rev140528.arp.pa
 import org.opendaylight.yang.gen.v1.urn.opendaylight.packet.basepacket.rev140528.packet.chain.grp.PacketChain;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.packet.basepacket.rev140528.packet.chain.grp.packet.chain.packet.RawPacket;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.packet.ethernet.rev140528.ethernet.packet.received.packet.chain.packet.EthernetPacket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This class listens to certain type of packets and writes
@@ -26,6 +28,7 @@ public class ReactiveFlowWriter implements ArpPacketListener {
   private InventoryReader inventoryReader;
   private FlowWriterService flowWriterService;
   private final MacAddress MAC_TO_IGNORE = new MacAddress("ff:ff:ff:ff:ff:ff");
+  private static final Logger _logger = LoggerFactory.getLogger(ReactiveFlowWriter.class);
 
   public ReactiveFlowWriter(InventoryReader inventoryReader, FlowWriterService flowWriterService) {
     this.inventoryReader = inventoryReader;
@@ -37,6 +40,7 @@ public class ReactiveFlowWriter implements ArpPacketListener {
     if(packetReceived == null || packetReceived.getPacketChain() == null) {
       return;
     }
+    _logger.info("Reveice ARP Packet: " + packetReceived);
 
     RawPacket rawPacket = null;
     EthernetPacket ethernetPacket = null;
@@ -55,7 +59,7 @@ public class ReactiveFlowWriter implements ArpPacketListener {
     }
     MacAddress destMac = ethernetPacket.getDestinationMac();
     if(!MAC_TO_IGNORE.equals(destMac)) {
-      writeFlows(rawPacket.getIngress(),
+      writeFlowsDijkstra(rawPacket.getIngress(),
           ethernetPacket.getSourceMac(),
           ethernetPacket.getDestinationMac());
     }
@@ -69,7 +73,23 @@ public class ReactiveFlowWriter implements ArpPacketListener {
    * @param destMac The destination MacAddress of the packet.
    */
   public void writeFlows(NodeConnectorRef ingress, MacAddress srcMac, MacAddress destMac) {
-    NodeConnectorRef destNodeConnector = inventoryReader.getNodeConnector(ingress.getValue().firstIdentifierOf(Node.class), destMac);
+	_logger.info("Write Flow: " + ingress);
+	NodeConnectorRef destNodeConnector = inventoryReader.getNodeConnector(ingress.getValue().firstIdentifierOf(Node.class), destMac);
+    if(destNodeConnector != null) {
+      flowWriterService.addBidirectionalMacToMacFlows(srcMac, ingress, destMac, destNodeConnector);
+    }
+  }
+
+  /**
+   * Invokes flow writer service to write  bidirectional mac-mac flows to switchers by Dijkstra.
+   *
+   * @param ingress The NodeConnector where the payload came from.
+   * @param srcMac  The source MacAddress of the packet.
+   * @param destMac The destination MacAddress of the packet.
+   */
+  public void writeFlowsDijkstra(NodeConnectorRef ingress, MacAddress srcMac, MacAddress destMac) {
+	_logger.info("Write Flow Mac: " + ingress);
+	NodeConnectorRef destNodeConnector = inventoryReader.getNodeConnectorByMac(destMac);
     if(destNodeConnector != null) {
       flowWriterService.addBidirectionalMacToMacFlows(srcMac, ingress, destMac, destNodeConnector);
     }

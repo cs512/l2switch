@@ -8,6 +8,8 @@
 package org.opendaylight.l2switch.loopremover.topology;
 
 import com.google.common.base.Preconditions;
+
+import edu.uci.ics.jung.algorithms.shortestpath.DijkstraShortestPath;
 import edu.uci.ics.jung.algorithms.shortestpath.PrimMinimumSpanningTree;
 import edu.uci.ics.jung.graph.DelegateTree;
 import edu.uci.ics.jung.graph.Graph;
@@ -37,7 +39,7 @@ public class NetworkGraphImpl implements NetworkGraphService {
   Set<String> linkAdded = new HashSet<>();
 
   //Enable following lines when shortest path functionality is required.
-  //DijkstraShortestPath<NodeId, Link> shortestPath = null;
+  DijkstraShortestPath<NodeId, Link> shortestPath = null;
 
   /**
    * Adds links to existing graph or creates new directed graph with given links if graph was not initialized.
@@ -66,11 +68,11 @@ public class NetworkGraphImpl implements NetworkGraphService {
       networkGraph.addEdge(link, sourceNodeId, destinationNodeId, EdgeType.UNDIRECTED);
     }
 
-    /*if(shortestPath == null) {
+    if(shortestPath == null) {
       shortestPath = new DijkstraShortestPath<>(networkGraph);
     } else {
       shortestPath.reset();
-    }*/
+    }
   }
 
   private boolean linkAlreadyAdded(Link link) {
@@ -105,11 +107,11 @@ public class NetworkGraphImpl implements NetworkGraphService {
     for(Link link : links) {
       networkGraph.removeEdge(link);
     }
-    /*if(shortestPath == null) {
+    if(shortestPath == null) {
       shortestPath = new DijkstraShortestPath<>(networkGraph);
     } else {
       shortestPath.reset();
-    }*/
+    }
 
   }
 
@@ -120,7 +122,7 @@ public class NetworkGraphImpl implements NetworkGraphService {
    * @return
    */
   //@Override
-  /*public synchronized List<Link> getPath(NodeId sourceNodeId, NodeId destinationNodeId) {
+  public synchronized List<Link> getPath(NodeId sourceNodeId, NodeId destinationNodeId) {
     Preconditions.checkNotNull(shortestPath, "Graph is not initialized, add links first.");
 
     if(sourceNodeId == null || destinationNodeId == null) {
@@ -129,7 +131,7 @@ public class NetworkGraphImpl implements NetworkGraphService {
     }
 
     return shortestPath.getPath(sourceNodeId, destinationNodeId);
-  }*/
+  }
 
   /**
    * Clears the prebuilt graph, in case same service instance is required to process a new graph.
@@ -138,7 +140,7 @@ public class NetworkGraphImpl implements NetworkGraphService {
   public synchronized void clear() {
     networkGraph = null;
     linkAdded.clear();
-    //shortestPath = null;
+    shortestPath = null;
   }
 
   /**

@@ -21,8 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * This class listens to certain type of packets and writes
- * a mac to mac flows.
+ * This class listens to certain type of packets and writes a mac to mac flows.
  */
 public class ReactiveFlowWriter implements ArpPacketListener {
   private InventoryReader inventoryReader;
@@ -37,61 +36,69 @@ public class ReactiveFlowWriter implements ArpPacketListener {
 
   @Override
   public void onArpPacketReceived(ArpPacketReceived packetReceived) {
-    if(packetReceived == null || packetReceived.getPacketChain() == null) {
+    if (packetReceived == null || packetReceived.getPacketChain() == null) {
       return;
     }
-    _logger.info("Reveice ARP Packet: " + packetReceived);
 
     RawPacket rawPacket = null;
     EthernetPacket ethernetPacket = null;
     ArpPacket arpPacket = null;
-    for(PacketChain packetChain : packetReceived.getPacketChain()) {
-      if(packetChain.getPacket() instanceof RawPacket) {
+    for (PacketChain packetChain : packetReceived.getPacketChain()) {
+      if (packetChain.getPacket() instanceof RawPacket) {
         rawPacket = (RawPacket) packetChain.getPacket();
-      } else if(packetChain.getPacket() instanceof EthernetPacket) {
+      } else if (packetChain.getPacket() instanceof EthernetPacket) {
         ethernetPacket = (EthernetPacket) packetChain.getPacket();
-      } else if(packetChain.getPacket() instanceof ArpPacket) {
+      } else if (packetChain.getPacket() instanceof ArpPacket) {
         arpPacket = (ArpPacket) packetChain.getPacket();
       }
     }
-    if(rawPacket == null || ethernetPacket == null || arpPacket == null) {
+    if (rawPacket == null || ethernetPacket == null || arpPacket == null) {
       return;
     }
     MacAddress destMac = ethernetPacket.getDestinationMac();
-    if(!MAC_TO_IGNORE.equals(destMac)) {
-      writeFlowsDijkstra(rawPacket.getIngress(),
-          ethernetPacket.getSourceMac(),
-          ethernetPacket.getDestinationMac());
+    if (!MAC_TO_IGNORE.equals(destMac)) {
+      writeFlowsDijkstra(rawPacket.getIngress(), ethernetPacket.getSourceMac(), ethernetPacket.getDestinationMac());
     }
   }
 
   /**
-   * Invokes flow writer service to write  bidirectional mac-mac flows on a switch.
+   * Invokes flow writer service to write bidirectional mac-mac flows on a
+   * switch.
    *
-   * @param ingress The NodeConnector where the payload came from.
-   * @param srcMac  The source MacAddress of the packet.
-   * @param destMac The destination MacAddress of the packet.
+   * @param ingress
+   *          The NodeConnector where the payload came from.
+   * @param srcMac
+   *          The source MacAddress of the packet.
+   * @param destMac
+   *          The destination MacAddress of the packet.
    */
   public void writeFlows(NodeConnectorRef ingress, MacAddress srcMac, MacAddress destMac) {
-	_logger.info("Write Flow: " + ingress);
-	NodeConnectorRef destNodeConnector = inventoryReader.getNodeConnector(ingress.getValue().firstIdentifierOf(Node.class), destMac);
-    if(destNodeConnector != null) {
+
+    NodeConnectorRef destNodeConnector = inventoryReader
+        .getNodeConnector(ingress.getValue().firstIdentifierOf(Node.class), destMac);
+    if (destNodeConnector != null) {
       flowWriterService.addBidirectionalMacToMacFlows(srcMac, ingress, destMac, destNodeConnector);
     }
   }
 
   /**
-   * Invokes flow writer service to write  bidirectional mac-mac flows to switchers by Dijkstra.
+   * Invokes flow writer service to write bidirectional mac-mac flows to
+   * switchers by Dijkstra.
    *
-   * @param ingress The NodeConnector where the payload came from.
-   * @param srcMac  The source MacAddress of the packet.
-   * @param destMac The destination MacAddress of the packet.
+   * @param ingress
+   *          The NodeConnector where the payload came from.
+   * @param srcMac
+   *          The source MacAddress of the packet.
+   * @param destMac
+   *          The destination MacAddress of the packet.
    */
   public void writeFlowsDijkstra(NodeConnectorRef ingress, MacAddress srcMac, MacAddress destMac) {
-	_logger.info("Write Flow Mac: " + ingress);
-	NodeConnectorRef destNodeConnector = inventoryReader.getNodeConnectorByMac(destMac);
-    if(destNodeConnector != null) {
+
+    NodeConnectorRef destNodeConnector = inventoryReader.getNodeConnectorByMac(destMac);
+    if (destNodeConnector != null) {
       flowWriterService.addBidirectionalMacToMacFlows(srcMac, ingress, destMac, destNodeConnector);
+      flowWriterService.addBidirectionalMacToMacFlowsDijkstra(srcMac, inventoryReader.getNodeId(ingress.getValue().firstIdentifierOf(Node.class)),
+          destMac, inventoryReader.getNodeId(destNodeConnector.getValue().firstIdentifierOf(Node.class)));
     }
   }
 }

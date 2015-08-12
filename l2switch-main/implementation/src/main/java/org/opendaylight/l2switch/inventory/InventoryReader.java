@@ -118,15 +118,13 @@ public class InventoryReader {
             new org.opendaylight.yang.gen.v1.urn.tbd.params.xml.ns.yang.network.topology.rev131021.network.topology.topology.NodeKey(
             new org.opendaylight.yang.gen.v1.urn.tbd.params.xml.ns.yang.network.topology.rev131021.NodeId("host:" + macAddress.getValue())))
         .augmentation(HostNode.class).build();
-    
-    _logger.info("MacAddress:" + macAddress.getValue());
+
     ReadOnlyTransaction readOnlyTransaction = dataService.newReadOnlyTransaction();
     try {
       Optional<HostNode> dataObjectOptional = null;
       dataObjectOptional = readOnlyTransaction.read(LogicalDatastoreType.OPERATIONAL, hostId).get();
       if(dataObjectOptional.isPresent()) {
         HostNode hostNode = dataObjectOptional.get();
-        _logger.info("AttKey:" + hostNode.getAttachmentPoints().get(0).getKey().getTpId());
         String attPoint = hostNode.getAttachmentPoints().get(0).getKey().getTpId().toString();
         InstanceIdentifier<NodeConnector>
         invNode = InstanceIdentifier.builder(Nodes.class)
@@ -135,7 +133,6 @@ public class InventoryReader {
                 new NodeConnectorId(attPoint)))
             .build();
         destNodeConnector = new NodeConnectorRef(invNode);
-        _logger.info("Connector: " + destNodeConnector);
       }
     } catch(InterruptedException e) {
       _logger.error("Failed to read nodes from Operation data store.");
@@ -146,7 +143,34 @@ public class InventoryReader {
       readOnlyTransaction.close();
       throw new RuntimeException("Failed to read nodes from Operation data store.", e);
     }
-    
+    readOnlyTransaction.close();
     return destNodeConnector;
+  }
+
+  public org.opendaylight.yang.gen.v1.urn.tbd.params.xml.ns.yang.network.topology.rev131021.NodeId
+  getNodeId(InstanceIdentifier<Node> instanceIdentifier) {
+    if(instanceIdentifier == null) {
+      return null;
+    }
+
+    ReadOnlyTransaction readOnlyTransaction = dataService.newReadOnlyTransaction();
+    try {
+      Optional<Node> dataObjectOptional = null;
+      dataObjectOptional = readOnlyTransaction.read(LogicalDatastoreType.OPERATIONAL, instanceIdentifier).get();
+      if(dataObjectOptional.isPresent()) {
+        Node node = (Node) dataObjectOptional.get();
+        readOnlyTransaction.close();
+        return new org.opendaylight.yang.gen.v1.urn.tbd.params.xml.ns.yang.network.topology.rev131021.NodeId(node.getId().getValue());
+        }
+    } catch(InterruptedException e) {
+      _logger.error("Failed to read nodes from Operation data store.");
+      readOnlyTransaction.close();
+      throw new RuntimeException("Failed to read nodes from Operation data store.", e);
+    } catch(ExecutionException e) {
+      _logger.error("Failed to read nodes from Operation data store.");
+      readOnlyTransaction.close();
+      throw new RuntimeException("Failed to read nodes from Operation data store.", e);
+    }
+    return null;
   }
 }

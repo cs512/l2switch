@@ -45,7 +45,7 @@
     </dependency>
     <dependency>
       <groupId>org.opendaylight.l2switch.loopremover</groupId>
-      <artifactId>loopremover-model</artifactId>
+      <artifactId>loopremover-impl</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>

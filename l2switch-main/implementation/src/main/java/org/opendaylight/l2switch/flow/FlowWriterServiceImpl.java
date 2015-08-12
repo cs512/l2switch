@@ -7,8 +7,12 @@
  */
 package org.opendaylight.l2switch.flow;
 
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
+import java.math.BigInteger;
+import java.util.List;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.opendaylight.l2switch.loopremover.topology.NetworkGraphService;
 import org.opendaylight.l2switch.util.InstanceIdentifierUtils;
 import org.opendaylight.openflowplugin.api.OFConstants;
 import org.opendaylight.yang.gen.v1.urn.ietf.params.xml.ns.yang.ietf.inet.types.rev100924.Uri;
@@ -38,27 +42,36 @@ import org.opendaylight.yang.gen.v1.urn.opendaylight.flow.types.rev131026.instru
 import org.opendaylight.yang.gen.v1.urn.opendaylight.flow.types.rev131026.instruction.instruction.apply.actions._case.ApplyActionsBuilder;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.flow.types.rev131026.instruction.list.Instruction;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.flow.types.rev131026.instruction.list.InstructionBuilder;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.NodeConnectorId;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.NodeConnectorRef;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.NodeId;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.NodeRef;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.Nodes;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.node.NodeConnector;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.node.NodeConnectorKey;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.nodes.Node;
+import org.opendaylight.yang.gen.v1.urn.opendaylight.inventory.rev130819.nodes.NodeKey;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.ethernet.match.fields.EthernetDestinationBuilder;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.ethernet.match.fields.EthernetSourceBuilder;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.match.EthernetMatch;
 import org.opendaylight.yang.gen.v1.urn.opendaylight.model.match.types.rev131026.match.EthernetMatchBuilder;
+import org.opendaylight.yang.gen.v1.urn.tbd.params.xml.ns.yang.network.topology.rev131021.network.topology.topology.Link;
 import org.opendaylight.yangtools.yang.binding.InstanceIdentifier;
 import org.opendaylight.yangtools.yang.common.RpcResult;
+import org.osgi.framework.BundleContext;
+import org.osgi.framework.FrameworkUtil;
+import org.osgi.framework.ServiceReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.math.BigInteger;
-import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicLong;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 
 /**
- * Implementation of FlowWriterService{@link org.opendaylight.l2switch.flow.FlowWriterService},
- * that builds required flow and writes to configuration data store using provided DataBrokerService
+ * Implementation of FlowWriterService
+ * {@link org.opendaylight.l2switch.flow.FlowWriterService}, that builds
+ * required flow and writes to configuration data store using provided
+ * DataBrokerService
  * {@link org.opendaylight.controller.sal.binding.api.data.DataBrokerService}
  */
 public class FlowWriterServiceImpl implements FlowWriterService {
@@ -98,9 +111,10 @@ public class FlowWriterServiceImpl implements FlowWriterService {
   }
 
   /**
-   * Writes a flow that forwards packets to destPort if destination mac in packet is destMac and
-   * source Mac in packet is sourceMac. If sourceMac is null then flow would not set any source mac,
-   * resulting in all packets with destMac being forwarded to destPort.
+   * Writes a flow that forwards packets to destPort if destination mac in
+   * packet is destMac and source Mac in packet is sourceMac. If sourceMac is
+   * null then flow would not set any source mac, resulting in all packets with
+   * destMac being forwarded to destPort.
    *
    * @param sourceMac
    * @param destMac
@@ -112,9 +126,8 @@ public class FlowWriterServiceImpl implements FlowWriterService {
     Preconditions.checkNotNull(destMac, "Destination mac address should not be null.");
     Preconditions.checkNotNull(destNodeConnectorRef, "Destination port should not be null.");
 
-
     // do not add flow if both macs are same.
-    if(sourceMac != null && destMac.equals(sourceMac)) {
+    if (sourceMac != null && destMac.equals(sourceMac)) {
       _logger.info("In addMacToMacFlow: No flows added. Source and Destination mac are same.");
       return;
     }
@@ -122,7 +135,7 @@ public class FlowWriterServiceImpl implements FlowWriterService {
     // get flow table key
     TableKey flowTableKey = new TableKey((short) flowTableId);
 
-    //build a flow path based on node connector to program flow
+    // build a flow path based on node connector to program flow
     InstanceIdentifier<Flow> flowPath = buildFlowPath(destNodeConnectorRef, flowTableKey);
 
     // build a flow that target given mac id
@@ -132,12 +145,40 @@ public class FlowWriterServiceImpl implements FlowWriterService {
     writeFlowToConfigData(flowPath, flowBody);
   }
 
+  private void addMacToMacFlowDijkstra(MacAddress sourceMac, MacAddress destMac,
+      NodeConnectorRef destNodeConnectorRef) {
+
+    Preconditions.checkNotNull(destMac, "Destination mac address should not be null.");
+    Preconditions.checkNotNull(destNodeConnectorRef, "Destination port should not be null.");
+
+    // do not add flow if both macs are same.
+    if (sourceMac != null && destMac.equals(sourceMac)) {
+      _logger.info("In addMacToMacFlowDijkstra: No flows added. Source and Destination mac are same.");
+      return;
+    }
+
+    // get flow table key
+    TableKey flowTableKey = new TableKey((short) flowTableId);
+
+    // build a flow path based on node connector to program flow
+    InstanceIdentifier<Flow> flowPath = buildFlowPath(destNodeConnectorRef, flowTableKey);
+
+    // build a flow that target given mac id
+    Flow flowBody = createMacToMacFlow(flowTableKey.getId(), flowPriority + 5, sourceMac, destMac,
+        destNodeConnectorRef);
+
+    // commit the flow in config data
+    writeFlowToConfigData(flowPath, flowBody);
+  }
+
   /**
-   * Writes mac-to-mac flow on all ports that are in the path between given source and destination ports.
-   * It uses path provided by org.opendaylight.l2switch.loopremover.topology.NetworkGraphService
-   * to find a links
+   * Writes mac-to-mac flow on all ports that are in the path between given
+   * source and destination ports. It uses path provided by
+   * org.opendaylight.l2switch.loopremover.topology.NetworkGraphService to find
+   * a links
    * {@link org.opendaylight.yang.gen.v1.urn.tbd.params.xml.ns.yang.network.topology.rev131021.network.topology.topology.Link}
-   * between given ports. And then writes appropriate flow on each port that is covered in that path.
+   * between given ports. And then writes appropriate flow on each port that is
+   * covered in that path.
    *
    * @param sourceMac
    * @param sourceNodeConnectorRef
@@ -145,18 +186,14 @@ public class FlowWriterServiceImpl implements FlowWriterService {
    * @param destNodeConnectorRef
    */
   @Override
-  public void addBidirectionalMacToMacFlows(MacAddress sourceMac,
-                                            NodeConnectorRef sourceNodeConnectorRef,
-                                            MacAddress destMac,
-                                            NodeConnectorRef destNodeConnectorRef) {
+  public void addBidirectionalMacToMacFlows(MacAddress sourceMac, NodeConnectorRef sourceNodeConnectorRef,
+      MacAddress destMac, NodeConnectorRef destNodeConnectorRef) {
     Preconditions.checkNotNull(sourceMac, "Source mac address should not be null.");
     Preconditions.checkNotNull(sourceNodeConnectorRef, "Source port should not be null.");
     Preconditions.checkNotNull(destMac, "Destination mac address should not be null.");
     Preconditions.checkNotNull(destNodeConnectorRef, "Destination port should not be null.");
-    
-    _logger.info("addBidirectionalMacToMacFlows: Called");
 
-    if(sourceNodeConnectorRef.equals(destNodeConnectorRef)) {
+    if (sourceNodeConnectorRef.equals(destNodeConnectorRef)) {
       _logger.info("In addMacToMacFlowsUsingShortestPath: No flows added. Source and Destination ports are same.");
       return;
 
@@ -167,6 +204,59 @@ public class FlowWriterServiceImpl implements FlowWriterService {
 
     // add sourceMac-To-destMac flow on destination port
     addMacToMacFlow(sourceMac, destMac, destNodeConnectorRef);
+  }
+
+  /**
+   * Writes mac-to-mac flow on all ports that are in the path between given
+   * source and destination ports. It uses path provided by
+   * org.opendaylight.l2switch.loopremover.topology.NetworkGraphService to find
+   * a links
+   * {@link org.opendaylight.yang.gen.v1.urn.tbd.params.xml.ns.yang.network.topology.rev131021.network.topology.topology.Link}
+   * between given ports. And then writes appropriate flow on each port that is
+   * covered in that path.
+   *
+   * @param sourceMac
+   * @param sourceNodeConnectorRef
+   * @param destMac
+   * @param destNodeConnectorRef
+   */
+  @Override
+  public void addBidirectionalMacToMacFlowsDijkstra(MacAddress sourceMac,
+      org.opendaylight.yang.gen.v1.urn.tbd.params.xml.ns.yang.network.topology.rev131021.NodeId srcNodeId,
+      MacAddress destMac,
+      org.opendaylight.yang.gen.v1.urn.tbd.params.xml.ns.yang.network.topology.rev131021.NodeId destNodeId) {
+    Preconditions.checkNotNull(sourceMac, "Source mac address should not be null.");
+    Preconditions.checkNotNull(srcNodeId, "Source port should not be null.");
+    Preconditions.checkNotNull(destMac, "Destination mac address should not be null.");
+    Preconditions.checkNotNull(destNodeId, "Destination port should not be null.");
+
+    if (srcNodeId.equals(destNodeId)) {
+      _logger.info("In addMacToMacFlowsUsingShortestPath: No flows added. Source and Destination ports are same.");
+      return;
+
+    }
+
+    NetworkGraphService ngs = getService(NetworkGraphService.class);
+    List<Link> path = ngs.getPath(srcNodeId, destNodeId);
+    _logger.info(path.toString());
+    _logger.info(sourceMac.toString() + " to " + destMac.toString());
+    _logger.info(srcNodeId.toString() + " to " + destNodeId.toString());
+    org.opendaylight.yang.gen.v1.urn.tbd.params.xml.ns.yang.network.topology.rev131021.NodeId src = new org.opendaylight.yang.gen.v1.urn.tbd.params.xml.ns.yang.network.topology.rev131021.NodeId(
+        srcNodeId);
+    for (Link link : path) {
+      String attPoint = link.getSource().getSourceTp().getValue();
+      if (!link.getSource().getSourceNode().toString().equals(src.toString())) {
+        attPoint = link.getDestination().getDestTp().getValue();
+        src = link.getSource().getSourceNode();
+      } else {
+        src = link.getDestination().getDestNode();
+      }
+
+      InstanceIdentifier<NodeConnector> invNode = InstanceIdentifier.builder(Nodes.class)
+          .child(Node.class, new NodeKey(new NodeId("openflow:" + attPoint.split(":")[1])))
+          .child(NodeConnector.class, new NodeConnectorKey(new NodeConnectorId(attPoint))).build();
+      addMacToMacFlowDijkstra(sourceMac, destMac, new NodeConnectorRef(invNode));
+    }
   }
 
   /**
@@ -189,10 +279,10 @@ public class FlowWriterServiceImpl implements FlowWriterService {
    * @param destMac
    * @param destPort
    * @return {@link org.opendaylight.yang.gen.v1.urn.opendaylight.flow.inventory.rev130819.tables.table.FlowBuilder}
-   * builds flow that forwards all packets with destMac to given port
+   *         builds flow that forwards all packets with destMac to given port
    */
-  private Flow createMacToMacFlow(Short tableId, int priority,
-                                  MacAddress sourceMac, MacAddress destMac, NodeConnectorRef destPort) {
+  private Flow createMacToMacFlow(Short tableId, int priority, MacAddress sourceMac, MacAddress destMac,
+      NodeConnectorRef destPort) {
 
     // start building flow
     FlowBuilder macToMacFlow = new FlowBuilder() //
@@ -208,16 +298,11 @@ public class FlowWriterServiceImpl implements FlowWriterService {
             .setAddress(destMac) //
             .build());
     // set source in the match only if present
-    if(sourceMac != null) {
-      ethernetMatchBuilder.setEthernetSource(new EthernetSourceBuilder()
-          .setAddress(sourceMac)
-          .build());
+    if (sourceMac != null) {
+      ethernetMatchBuilder.setEthernetSource(new EthernetSourceBuilder().setAddress(sourceMac).build());
     }
     EthernetMatch ethernetMatch = ethernetMatchBuilder.build();
-    Match match = new MatchBuilder()
-        .setEthernetMatch(ethernetMatch)
-        .build();
-
+    Match match = new MatchBuilder().setEthernetMatch(ethernetMatch).build();
 
     Uri destPortUri = destPort.getValue().firstKeyOf(NodeConnector.class, NodeConnectorKey.class).getId();
 
@@ -232,8 +317,7 @@ public class FlowWriterServiceImpl implements FlowWriterService {
         .build();
 
     // Create an Apply Action
-    ApplyActions applyActions = new ApplyActionsBuilder().setAction(ImmutableList.of(outputToControllerAction))
-        .build();
+    ApplyActions applyActions = new ApplyActionsBuilder().setAction(ImmutableList.of(outputToControllerAction)).build();
 
     // Wrap our Apply Action in an Instruction
     Instruction applyActionsInstruction = new InstructionBuilder() //
@@ -244,8 +328,7 @@ public class FlowWriterServiceImpl implements FlowWriterService {
         .build();
 
     // Put our Instruction in a list of Instructions
-    macToMacFlow
-        .setMatch(match) //
+    macToMacFlow.setMatch(match) //
         .setInstructions(new InstructionsBuilder() //
             .setInstruction(ImmutableList.of(applyActionsInstruction)) //
             .build()) //
@@ -260,22 +343,59 @@ public class FlowWriterServiceImpl implements FlowWriterService {
   }
 
   /**
-   * Starts and commits data change transaction which
-   * modifies provided flow path with supplied body.
+   * Starts and commits data change transaction which modifies provided flow
+   * path with supplied body.
    *
    * @param flowPath
    * @param flow
    * @return transaction commit
    */
-  private Future<RpcResult<AddFlowOutput>> writeFlowToConfigData(InstanceIdentifier<Flow> flowPath,
-                                                                 Flow flow) {
-    final InstanceIdentifier<Table> tableInstanceId = flowPath.<Table>firstIdentifierOf(Table.class);
-    final InstanceIdentifier<Node> nodeInstanceId = flowPath.<Node>firstIdentifierOf(Node.class);
+  private Future<RpcResult<AddFlowOutput>> writeFlowToConfigData(InstanceIdentifier<Flow> flowPath, Flow flow) {
+    final InstanceIdentifier<Table> tableInstanceId = flowPath.<Table> firstIdentifierOf(Table.class);
+    final InstanceIdentifier<Node> nodeInstanceId = flowPath.<Node> firstIdentifierOf(Node.class);
     final AddFlowInputBuilder builder = new AddFlowInputBuilder(flow);
     builder.setNode(new NodeRef(nodeInstanceId));
     builder.setFlowRef(new FlowRef(flowPath));
     builder.setFlowTable(new FlowTableRef(tableInstanceId));
     builder.setTransactionUri(new Uri(flow.getId().getValue()));
     return salFlowService.addFlow(builder.build());
+  }
+
+  @SuppressWarnings("unchecked")
+  private <E> E getService(Class<E> clazz) {
+    E service = (E) getGlobalInstance(clazz, this);
+    return service;
+  }
+
+  private Object getGlobalInstance(Class<?> clazz, Object bundle) {
+    return getGlobalInstance(clazz, bundle, null);
+  }
+
+  public static Object getGlobalInstance(Class<?> clazz, Object bundle, String serviceFilter) {
+    Object[] instances = getGlobalInstances(clazz, bundle, serviceFilter);
+    if (instances != null) {
+      return instances[0];
+    }
+    return null;
+  }
+
+  @SuppressWarnings("unchecked")
+  public static Object[] getGlobalInstances(Class<?> clazz, Object bundle, String serviceFilter) {
+    Object instances[] = null;
+    try {
+      BundleContext bCtx = FrameworkUtil.getBundle(bundle.getClass()).getBundleContext();
+
+      ServiceReference[] services = bCtx.getServiceReferences(clazz.getName(), serviceFilter);
+
+      if (services != null) {
+        instances = new Object[services.length];
+        for (int i = 0; i < services.length; i++) {
+          instances[i] = bCtx.getService(services[i]);
+        }
+      }
+    } catch (Exception e) {
+      _logger.error("Instance reference is NULL");
+    }
+    return instances;
   }
 }

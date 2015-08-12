@@ -121,7 +121,7 @@ public class NetworkGraphImpl implements NetworkGraphService {
    * @param destinationNodeId
    * @return
    */
-  //@Override
+  @Override
   public synchronized List<Link> getPath(NodeId sourceNodeId, NodeId destinationNodeId) {
     Preconditions.checkNotNull(shortestPath, "Graph is not initialized, add links first.");
 

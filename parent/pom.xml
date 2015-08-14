@@ -104,12 +104,12 @@
     <!-- OpenDayLight Released artifact -->
     <repository>
       <id>opendaylight-release</id>
-      <url>${nexusproxy}/repositories/opendaylight.release/</url>
+      <url>http://192.168.1.25:8081/nexus/content/repositories/ALTO/</url>
     </repository>
     <!-- OpenDayLight Snapshot artifact -->
     <snapshotRepository>
       <id>opendaylight-snapshot</id>
-      <url>${nexusproxy}/repositories/opendaylight.snapshot/</url>
+      <url>http://192.168.1.25:8081/nexus/content/repositories/ALTO/</url>
     </snapshotRepository>
     <site>
       <id>${project.artifactId}-site</id>

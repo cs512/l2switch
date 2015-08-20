@@ -194,7 +194,7 @@ public class FlowWriterServiceImpl implements FlowWriterService {
     Preconditions.checkNotNull(destNodeConnectorRef, "Destination port should not be null.");
 
     if (sourceNodeConnectorRef.equals(destNodeConnectorRef)) {
-      _logger.info("In addMacToMacFlowsUsingShortestPath: No flows added. Source and Destination ports are same.");
+      _logger.info("In addMacToMacFlows: No flows added. Source and Destination ports are same.");
       return;
 
     }
@@ -216,9 +216,9 @@ public class FlowWriterServiceImpl implements FlowWriterService {
    * covered in that path.
    *
    * @param sourceMac
-   * @param sourceNodeConnectorRef
+   * @param srcNodeId
    * @param destMac
-   * @param destNodeConnectorRef
+   * @param destNodeId
    */
   @Override
   public void addBidirectionalMacToMacFlowsDijkstra(MacAddress sourceMac,
@@ -230,7 +230,7 @@ public class FlowWriterServiceImpl implements FlowWriterService {
     Preconditions.checkNotNull(destMac, "Destination mac address should not be null.");
     Preconditions.checkNotNull(destNodeId, "Destination port should not be null.");
 
-    if (srcNodeId.equals(destNodeId)) {
+    if (srcNodeId.toString().equals(destNodeId.toString())) {
       _logger.info("In addMacToMacFlowsUsingShortestPath: No flows added. Source and Destination ports are same.");
       return;
 
